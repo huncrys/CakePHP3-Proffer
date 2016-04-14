@@ -15,6 +15,7 @@ use Cake\Event\Event;
 use Cake\ORM\Behavior;
 use Cake\ORM\Entity;
 use Exception;
+use Imagine\Gd\Imagine;
 use Proffer\Lib\ImageTransform;
 use Proffer\Lib\ProfferPath;
 use Proffer\Lib\ProfferPathInterface;
@@ -99,26 +100,45 @@ class ProfferBehavior extends Behavior
                 $path->createPathFolder();
 
                 if ($this->moveUploadedFile($entity->get($field)['tmp_name'], $path->fullPath())) {
+                    $isImage = (getimagesize($path->fullPath()) !== false);
+                    if ($isImage) {
+                        if (isset($settings['jpeg_quality'])) {
+                            $imagine = new Imagine;
+                            $oldPath = $path->fullPath();
+                            $image = $imagine->open($oldPath);
+                            $path->setFilename(pathinfo($path->getFilename(), PATHINFO_FILENAME) . ".jpg");
+                            $image->save($path->fullPath(), [
+                                'jpeg_quality' => $settings['jpeg_quality']
+                            ]);
+
+                            if ($oldPath != $path->fullPath()) {
+                                unlink($oldPath);
+                            }
+                        }
+                    }
+
                     $imagePaths = [$path->fullPath()];
 
                     $entity->set($field, $path->getFilename());
                     $entity->set($settings['dir'], $path->getSeed());
 
                     // Only generate thumbnails for image uploads
-                    if (getimagesize($path->fullPath()) !== false && isset($settings['thumbnailSizes'])) {
-                        // Allow the transformation class to be injected
-                        if (!empty($settings['transformClass'])) {
-                            $imageTransform = new $settings['transformClass']($this->_table, $path);
-                        } else {
-                            $imageTransform = new ImageTransform($this->_table, $path);
+                    if ($isImage) {
+                        if (isset($settings['thumbnailSizes'])) {
+                            // Allow the transformation class to be injected
+                            if (!empty($settings['transformClass'])) {
+                                $imageTransform = new $settings['transformClass']($this->_table, $path);
+                            } else {
+                                $imageTransform = new ImageTransform($this->_table, $path);
+                            }
+
+                            $thumbnailPaths = $imageTransform->processThumbnails($settings);
+                            $imagePaths = array_merge($imagePaths, $thumbnailPaths);
+
+                            $eventData = ['path' => $path, 'images' => $imagePaths];
+                            $event = new Event('Proffer.afterCreateImage', $entity, $eventData);
+                            $this->_table->eventManager()->dispatch($event);
                         }
-
-                        $thumbnailPaths = $imageTransform->processThumbnails($settings);
-                        $imagePaths = array_merge($imagePaths, $thumbnailPaths);
-
-                        $eventData = ['path' => $path, 'images' => $imagePaths];
-                        $event = new Event('Proffer.afterCreateImage', $entity, $eventData);
-                        $this->_table->eventManager()->dispatch($event);
                     }
                 } else {
                     throw new Exception('Cannot upload file');

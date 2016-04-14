@@ -23,7 +23,7 @@ class ImageTransform implements ImageTransformInterface
     /**
      * Store our instance of Imagine
      *
-     * @var ImagineInterface $Imagine
+     * @var ImageInterface $Imagine
      */
     private $Imagine;
 
@@ -52,7 +52,7 @@ class ImageTransform implements ImageTransformInterface
     /**
      * Get the specified Imagine engine class
      *
-     * @return ImagineInterface
+     * @return ImageInterface
      */
     protected function getImagine()
     {
